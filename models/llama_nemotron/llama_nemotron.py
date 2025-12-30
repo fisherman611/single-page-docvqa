@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 load_dotenv()
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 
-with open("models/nemotron/config.json", "r", encoding="utf-8") as f:
+with open("models/llama_nemotron/config.json", "r", encoding="utf-8") as f:
     config = json.load(f)
     
 MODEL_NAME = config["model_name"]
@@ -28,7 +28,7 @@ AVG_TOKENS_PER_CALL = config["avg_tokens_per_call"]
 SLEEP_BETWEEN_CALLS = 60.0 / MAX_RPM  # seconds between requests
 OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-with open("models/nemotron/system_prompt.txt", "r", encoding="utf-8") as f:
+with open("models/llama_nemotron/system_prompt.txt", "r", encoding="utf-8") as f:
     SYSTEM_PROMPT = f.read()
 
 client = OpenAI(
