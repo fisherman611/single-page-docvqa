@@ -1,0 +1,10 @@
+{
+    "model_name": "nvidia/llama-3.1-nemotron-nano-vl-8b-v1",
+    "image_folder": "data/spdocvqa_images",
+    "data_path": "data/spdocvqa_qas/val_v1.0_withQT.json",
+    "output_path": "outputs/llama_nemotron_results.json",
+    "max_rpm": 30,
+    "max_tpm": 250000,
+    "avg_tokens_per_call": 3000,
+    "num_samples": 1000
+}
