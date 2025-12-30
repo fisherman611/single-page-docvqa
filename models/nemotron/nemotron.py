@@ -18,6 +18,7 @@ with open("models/nemotron/config.json", "r", encoding="utf-8") as f:
     config = json.load(f)
     
 MODEL_NAME = config["model_name"]
+NUM_SAMPLES = config["num_samples"]
 IMAGE_FOLDER = Path(config["image_folder"])
 DATA_PATH = Path(config["data_path"])
 OUTPUT_PATH = Path(config["output_path"])
@@ -48,7 +49,7 @@ total_samples = len(data["data"])
 
 print(f"Starting DocVQA inference on {total_samples} samples...")
 
-for i in range(start_idx, min(total_samples, 10)):
+for i in range(start_idx, min(total_samples, NUM_SAMPLES)):
     now = time.time()
     if now - minute_window_start >= 60:
         token_bucket = 0
