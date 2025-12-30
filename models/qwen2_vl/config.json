@@ -1,0 +1,5 @@
+{
+    "data_path": "data/spdocvqa_qas/val_v1.0_withQT.json",
+    "image_folder": "data/spdocvqa_images",
+    "output_path": "results/qwen_vl_results.json"
+}
