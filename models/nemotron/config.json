@@ -1,0 +1,9 @@
+{
+    "model_name": "nvidia/nemotron-nano-12b-v2-vl",
+    "image_folder": "data/spdocvqa_images",
+    "data_path": "data/spdocvqa_qas/val_v1.0_withQT.json",
+    "output_path": "outputs/nemotron_results.json",
+    "max_rpm": 30,
+    "max_tpm": 250000,
+    "avg_tokens_per_call": 3000
+}
