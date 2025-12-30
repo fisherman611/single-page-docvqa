@@ -10,6 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from ema import *
+from ema_modified import *
 from anls import *
 
 # --- argparse ---
@@ -45,6 +46,10 @@ def main():
     }
 
     print("Exact match accuracy:", exact_match_accuracy(
+        pred_map=pred_map,
+        gold_map=gold_map
+    ))
+    print("Exact match accuracy modified:", exact_match_accuracy_modified(
         pred_map=pred_map,
         gold_map=gold_map
     ))
