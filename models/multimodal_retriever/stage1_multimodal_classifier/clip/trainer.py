@@ -10,7 +10,6 @@ import torch
 from model import *
 from train_eval import *
 from dataset import *
-from utils.helper import load_config
 from transformers import CLIPProcessor
 from torch.utils.data import DataLoader
 
