@@ -21,7 +21,7 @@
     "early_stopping_patience": 3,
     "threshold": 0.5,
     "use_mixed_precision": true,
-    "freeze_clip": true,
+    "freeze_clip": false,
     "dropout": 0.2,
     "use_attention_fusion": true,
     "num_attention_heads": 8,
