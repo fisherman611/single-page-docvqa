@@ -47,15 +47,15 @@ def enforce_schema(parsed: dict) -> dict:
     """
     Ensure output matches the required schema:
     {
-      "image_description": "...",
+      "image_caption": "...",
       "answer_explanation": "..."
     }
     """
     if not isinstance(parsed, dict):
-        return {"image_description": "", "answer_explanation": ""}
+        return {"image_caption": "", "answer_explanation": ""}
 
     return {
-        "image_description": str(parsed.get("image_description", "") or ""),
+        "image_caption": str(parsed.get("image_caption", "") or ""),
         "answer_explanation": str(parsed.get("answer_explanation", "") or ""),
     }
     
