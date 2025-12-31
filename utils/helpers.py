@@ -128,3 +128,17 @@ def label_recall_vector(pred_vec, gt_vec):
 
 def label_recall_macro(Y_true, Y_pred):
     return np.mean([label_recall_vector(p, g) for p, g in zip(Y_pred, Y_true)])
+
+def extract_image_paths_from_file(file_path):
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    
+    images = []
+    data_list = data["data"]
+    for i in range(len(data_list)):
+        sample = data_list[i]
+        image = Path(sample["image"]).name
+        if image not in images:
+            images.append(image)
+    
+    return images
