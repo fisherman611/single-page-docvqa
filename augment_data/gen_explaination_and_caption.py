@@ -122,7 +122,7 @@ for i in tqdm(range(limit)):
                 stream=False,
             )
 
-        response = call_with_retry(_do_call, max_retries=5, base_backoff=2.0)
+        response = call_with_retry(_do_call, max_retries=100, base_backoff=2.0)
 
         raw_text = (response.choices[0].message.content or "").strip()
         parsed = clean_json_output(raw_text)
