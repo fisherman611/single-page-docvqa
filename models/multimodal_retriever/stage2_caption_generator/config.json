@@ -1,0 +1,7 @@
+{
+    "model_name": "meta/llama-4-maverick-17b-128e-instruct",
+    "image_folder": "data/spdocvqa_images",
+    "max_rpm": 40,
+    "max_tpm": 250000,
+    "avg_tokens_per_call": 3000
+}
