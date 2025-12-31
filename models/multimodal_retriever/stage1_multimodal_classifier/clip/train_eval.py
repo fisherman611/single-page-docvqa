@@ -59,6 +59,7 @@ def train_model(
     max_grad_norm = max_grad_norm or config.get('max_grad_norm', 1.0)
     early_stopping_patience = early_stopping_patience or config.get('early_stopping_patience', 3)
     use_mixed_precision = use_mixed_precision if use_mixed_precision is not None else config.get('use_mixed_precision', True)
+    history_path = os.path.join(save_dir, "training_history.json")
     
     # Setup
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -166,6 +167,9 @@ def train_model(
         }
         training_history.append(epoch_history)
         
+        with open(history_path, 'w') as f:
+            json.dump(training_history, f, indent=2)
+            
         # Save last model
         torch.save({
             'epoch': epoch + 1,
@@ -202,11 +206,6 @@ def train_model(
                 break
         
         print(f"{'-'*60}\n")
-    
-    # Save training history
-    history_path = os.path.join(save_dir, "training_history.json")
-    with open(history_path, 'w') as f:
-        json.dump(training_history, f, indent=2)
     
     print(f"\n{'='*60}")
     print(f"Training Completed!")
