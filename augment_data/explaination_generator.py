@@ -22,8 +22,7 @@ MODEL_NAME = config["model_name"]
 IMAGE_FOLDER = Path(config["image_folder"])
 DATA_PATH = Path(config["data_path"])
 OUTPUT_PATH = Path(config["explaination_output_path"])
-# NUM_SAMPLES = config.get("num_samples", None)
-NUM_SAMPLES = 10
+NUM_SAMPLES = config.get("num_samples", None)
 
 MAX_RPM = config["max_rpm"]
 MAX_TPM = config["max_tpm"]
