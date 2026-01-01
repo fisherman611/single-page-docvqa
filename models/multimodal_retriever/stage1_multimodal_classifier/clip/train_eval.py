@@ -181,9 +181,9 @@ def train_model(
         }, last_model_path)
         
         # Save best model and early stopping
-        current_jaccard = metrics['jaccard']
-        if current_jaccard > best_jaccard:
-            best_jaccard = current_jaccard
+        current_macro_label_recall = metrics['macro_label_recall']
+        if current_macro_label_recall > best_macro_label_recall:
+            best_macro_label_recall = current_macro_label_recall
             best_epoch = epoch + 1
             patience_counter = 0
             
@@ -192,11 +192,11 @@ def train_model(
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'scheduler_state_dict': scheduler.state_dict(),
-                'best_jaccard': best_jaccard,
+                'best_macro_label_recall': best_macro_label_recall,
                 'metrics': metrics,
                 'config': config
             }, best_model_path)
-            print(f"Best model saved! (Jaccard: {best_jaccard:.4f})")
+            print(f"Best model saved! (Macro Label Recall: {best_macro_label_recall:.4f})")
         else:
             patience_counter += 1
             print(f"No improvement. Patience: {patience_counter}/{early_stopping_patience}")
@@ -210,7 +210,7 @@ def train_model(
     print(f"\n{'='*60}")
     print(f"Training Completed!")
     print(f"  Best Epoch: {best_epoch}")
-    print(f"  Best Jaccard Score: {best_jaccard:.4f}")
+    print(f"  Best Macro Label Recall Score: {best_macro_label_recall:.4f}")
     print(f"  Best Model: {best_model_path}")
     print(f"  Training History: {history_path}")
     print(f"{'='*60}\n")
