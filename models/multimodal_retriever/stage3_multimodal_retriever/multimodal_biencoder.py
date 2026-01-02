@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Tuple
 import numpy as np
 from PIL import Image
 import faiss
+import random
 import torch
 import torch.nn as nn
 from transformers import CLIPProcessor, CLIPModel
@@ -85,9 +86,9 @@ class MultimodalBiEncoder:
         return "unknown"
     
     
-    def build_text_input(self, example: Dict) -> str:
-        question = example.get("question", "")
-        image_caption = example.get("image_caption", "")
+    def build_text_input(self, example: Dict, drop_q: bool=False, drop_cap: bool=False) -> str:
+        question = "" if drop_q else example.get("question", "")
+        image_caption ="" if drop_cap else  example.get("image_caption", "")
         return f"Question: {question} [SEP] Image caption: {image_caption}"
     
     
@@ -146,6 +147,106 @@ class MultimodalBiEncoder:
             proj = proj / proj.norm(dim=-1, keepdim=True)
             return proj
 
+
+    def encode_bundle(
+        self,
+        batch_examples: List[Dict],
+        use_image_mask: List[bool],
+        drop_q_mask: List[bool],
+        drop_cap_mask: List[bool],
+        no_grad: bool=True
+    ) -> torch.Tensor:
+        images = [self.build_image_input(example) for example in batch_examples]
+        texts = [
+            self.build_text_input(
+                batch_examples[i],
+                drop_q=drop_q_mask[i],
+                drop_cap=drop_q_mask[i]
+            )
+            for i in range(len(batch_examples))
+        ]
+        
+        ctx = torch.no_grad() if no_grad else torch.enable_grad()
+        with ctx:
+            img_emb = self.encode_image(images, no_grad=no_grad)   # [B, image_dim]
+            txt_emb = self.encode_text(texts, no_grad=no_grad)     # [B, text_dim]
+            mask = torch.tensor(use_image_mask, device=self.device, dtype=torch.float32).unsqueeze(1)
+            img_emb = img_emb * mask
+            concat = torch.cat([img_emb, txt_emb], dim=-1)
+            proj = self.proj(concat)
+            proj = proj / proj.norm(dim=-1, keepdim=True)
+            return proj
+        
+        
+    @staticmethod
+    def info_nce_loss(
+        query_emb: torch.Tensor,
+        doc_emb: torch.Tensor,
+        temperature: float = 0.07,
+    ) -> torch.Tensor:
+        """
+        Standard InfoNCE loss for symmetric contrastive learning.
+        query_emb: [B, D]
+        doc_emb:   [B, D]
+        """
+        logits = query_emb @ doc_emb.t() / temperature  # [B, B]
+        labels = torch.arange(query_emb.size(0), device=query_emb.device)
+        loss_q = torch.nn.functional.cross_entropy(logits, labels)
+        loss_d = torch.nn.functional.cross_entropy(logits.t(), labels)
+        return (loss_q + loss_d) / 2.0
+    
+    
+    @staticmethod
+    def sample_view() -> Tuple[bool, bool, bool]:
+        """
+        Returns (use_image, drop_q, drop_cap)
+        """
+        r = random.random()
+        if r < 0.25:
+            return True, False, True     # image + question
+        elif r < 0.50:
+            return True, True, False     # image + caption
+        elif r < 0.65:
+            return False, False, False   # text-only (q+cap)
+        else:
+            return True, False, False    # full (image+q+cap)
+    
+    
+    def two_view_contrastive_training_step(
+        self,
+        batch_examples: List[Dict],
+        optimizer: torch.optim.Optimizer,
+        temperature: float=0.07,
+    ) -> float:
+        """
+        Self-retrieval training (query/doc from SAME example pool):
+          - build view A and view B for each example
+          - positive: A(i) ~ B(i)
+          - negatives: A(i) ~ B(j != i) in-batch
+        """
+        self.train()
+
+        use_a, dq_a, dc_a = [], [], []
+        use_b, dq_b, dc_b = [], [], []
+
+        for _ in batch_examples:
+            ua, dqa, dca = self.sample_view()
+            ub, dqb, dcb = self.sample_view()
+            use_a.append(ua); dq_a.append(dqa); dc_a.append(dca)
+            use_b.append(ub); dq_b.append(dqb); dc_b.append(dcb)
+
+        z_a = self.encode_bundle(batch_examples, use_a, dq_a, dc_a, no_grad=False)
+        z_b = self.encode_bundle(batch_examples, use_b, dq_b, dc_b, no_grad=False)
+
+        loss = self.info_nce_loss(z_a, z_b, temperature=temperature)
+
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        optimizer.step()
+        
+        return float(loss.item())
+    
+    
 
 # def run_one_test(text_model_name: str, image_model_name: str, proj_dim: int):
 #     device = "cuda" if torch.cuda.is_available() else "cpu"
