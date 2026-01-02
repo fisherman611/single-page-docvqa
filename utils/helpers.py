@@ -8,6 +8,9 @@ import mimetypes
 import time
 import torch
 import numpy as np
+from PIL import Image
+import requests
+from io import BytesIO
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -142,3 +145,14 @@ def extract_image_paths_from_file(file_path):
             images.append(image)
     
     return images
+
+def load_image(path: str) -> Image.Image:
+    image = Image.open(path).convert("RGB")
+    max_side = 1024  # try 768 if you still get OOM
+    image.thumbnail((max_side, max_side), Image.LANCZOS)
+    return image
+
+def load_image_from_url(url: str) -> Image.Image:
+    r = requests.get(url, timeout=30)
+    r.raise_for_status()
+    return Image.open(BytesIO(r.content)).convert("RGB")
