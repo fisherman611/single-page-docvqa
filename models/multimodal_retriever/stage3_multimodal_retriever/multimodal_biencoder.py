@@ -19,6 +19,8 @@ from transformers import CLIPProcessor, CLIPModel
 from sentence_transformers import SentenceTransformer, CrossEncoder, util
 from utils.helpers import *
 from dotenv import load_dotenv
+from models.multimodal_retriever.stage3_multimodal_retriever import faiss_utils
+
 
 load_dotenv()
 from huggingface_hub import login
@@ -74,6 +76,22 @@ class MultimodalBiEncoder:
             )
         
         self.proj = nn.Linear(image_dim + text_dim, proj_dim).to(self.device)
+    
+    
+    def train(self):
+        """Set model to training mode."""
+        self.image_model.train()
+        if self.text_encoder_type == "clip":
+            self.text_model.train()
+        self.proj.train()
+    
+    
+    def eval(self):
+        """Set model to evaluation mode."""
+        self.image_model.eval()
+        if self.text_encoder_type == "clip":
+            self.text_model.eval()
+        self.proj.eval()
     
     
     def _infer_text_encoder_type(self, text_model_name: str) -> str:
@@ -247,6 +265,134 @@ class MultimodalBiEncoder:
         return float(loss.item())
     
     
+    def build_faiss_index(
+        self, 
+        examples: List[Dict], 
+        batch_size: int = 64,
+        use_gpu: bool = False,
+        index_type: str = "flat",
+        nlist: int = 100,
+        m: int = 8,
+        nbits: int = 8
+    ) -> Tuple[faiss.Index, np.ndarray]:
+        """
+        Build a FAISS index from document embeddings.
+        
+        Args:
+            examples: List of examples with image, question, and image_caption fields
+            batch_size: Batch size for encoding
+            use_gpu: Whether to use GPU for FAISS index
+            index_type: Type of FAISS index to build
+                - "flat": exact search (IndexFlatIP)
+                - "ivf": inverted file index for faster approximate search
+                - "pq": product quantization for memory efficiency
+                - "ivfpq": combination of IVF and PQ
+            nlist: Number of clusters for IVF indices
+            m: Number of subquantizers for PQ
+            nbits: Number of bits per subquantizer for PQ
+        
+        Returns:
+            Tuple of (FAISS index, embedding matrix)
+        """
+        self.eval()
+        vecs = []
+
+        # Doc embedding uses FULL view (image + question + caption)
+        for i in range(0, len(examples), batch_size):
+            batch = examples[i:i + batch_size]
+            use = [True] * len(batch)      # use image
+            dq = [False] * len(batch)      # don't drop question
+            dc = [False] * len(batch)      # don't drop caption
+
+            with torch.no_grad():
+                z = self.encode_bundle(batch, use, dq, dc, no_grad=True)
+            vecs.append(z.cpu().numpy().astype("float32"))
+
+        mat = np.concatenate(vecs, axis=0)
+        
+        # Use the build_index function from faiss_utils
+        index = faiss_utils.build_index(
+            embeddings=mat,
+            use_gpu=use_gpu,
+            index_type=index_type,
+            nlist=nlist,
+            m=m,
+            nbits=nbits
+        )
+        
+        return index, mat
+    
+    
+    def mine_hard_negatives(
+        self,
+        index: faiss.Index,
+        examples: List[Dict],
+        topm: int = 50,
+        query_view: str = "image+question",
+        batch_size: int = 64,
+    ) -> Dict[str, List[str]]:
+        """
+        Mine hard negatives using FAISS index.
+        
+        No true relevance labels needed:
+        - hard negatives = nearest neighbors excluding itself.
+        You can add extra filters (e.g., different answer) later if you want.
+        
+        Args:
+            index: Pre-built FAISS index from build_faiss_index
+            examples: List of examples (same as used to build index)
+            topm: Number of top neighbors to retrieve
+            query_view: Query view type:
+                - "image+question": use image + question (drop caption)
+                - "text-only": use question + caption only (no image)
+                - "full": use image + question + caption
+            batch_size: Batch size for encoding
+        
+        Returns:
+            Dictionary mapping example ID to list of hard negative IDs
+        """
+        self.eval()
+
+        ids = [ex["id"] for ex in examples]
+        id_to_pos = {ex_id: i for i, ex_id in enumerate(ids)}
+
+        hard_negs = {ex_id: [] for ex_id in ids}
+
+        for i in range(0, len(examples), batch_size):
+            batch = examples[i:i + batch_size]
+
+            # Configure view based on query_view parameter
+            if query_view == "image+question":
+                use = [True] * len(batch)      # use image
+                dq = [False] * len(batch)      # don't drop question
+                dc = [True] * len(batch)       # drop caption
+            elif query_view == "text-only":
+                use = [False] * len(batch)     # don't use image
+                dq = [False] * len(batch)      # don't drop question
+                dc = [False] * len(batch)      # don't drop caption
+            else:  # full
+                use = [True] * len(batch)      # use image
+                dq = [False] * len(batch)      # don't drop question
+                dc = [False] * len(batch)      # don't drop caption
+
+            with torch.no_grad():
+                q = self.encode_bundle(batch, use, dq, dc, no_grad=True).cpu().numpy().astype("float32")
+
+            # Search for nearest neighbors
+            scores, neigh_pos = index.search(q, topm)
+
+            # Extract hard negatives (exclude self)
+            for b_idx, ex in enumerate(batch):
+                ex_id = ex["id"]
+                self_pos = id_to_pos[ex_id]
+
+                # Filter out the example itself
+                candidates = [p for p in neigh_pos[b_idx].tolist() if p != self_pos]
+                hard_negs[ex_id] = [examples[p]["id"] for p in candidates]
+
+        return hard_negs
+    
+
 
 # def run_one_test(text_model_name: str, image_model_name: str, proj_dim: int):
 #     device = "cuda" if torch.cuda.is_available() else "cpu"
