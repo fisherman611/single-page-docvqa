@@ -16,6 +16,7 @@ import random
 import torch
 import torch.nn as nn
 from transformers import CLIPProcessor, CLIPModel
+from tqdm.auto import tqdm
 from sentence_transformers import SentenceTransformer, CrossEncoder, util
 from utils.helpers import *
 from dotenv import load_dotenv
@@ -298,7 +299,7 @@ class MultimodalBiEncoder:
         vecs = []
 
         # Doc embedding uses FULL view (image + question + caption)
-        for i in range(0, len(examples), batch_size):
+        for i in tqdm(range(0, len(examples), batch_size)):
             batch = examples[i:i + batch_size]
             use = [True] * len(batch)      # use image
             dq = [False] * len(batch)      # don't drop question
