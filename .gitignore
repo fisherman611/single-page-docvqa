@@ -208,3 +208,7 @@ __marimo__/
 data/
 results*
 data.zip
+models/multimodal_retriever/stage3_multimodal_retriever/example_hard_negative_mining.py
+models/multimodal_retriever/stage3_multimodal_retriever/TRAINING_GUIDE.md
+checkpoints/
+multimodal_biencoder_checkpoints/
