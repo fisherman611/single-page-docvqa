@@ -1,0 +1,8 @@
+{
+    "text_model_embedding": "openai/clip-vit-base-patch32",
+    "image_model_embedding": "openai/clip-vit-base-patch32",
+    "proj_dim": 512,
+    "batchsize": 32,
+    "top_k": 20,
+    "rerank_model": "Salesforce/blip2-itm-vit-g-coco"
+}
