@@ -83,7 +83,7 @@ def train_model(
     last_model_path = os.path.join(save_dir, "last_model.pt")
     
     # Tracking
-    best_jaccard = 0.0
+    best_macro_label_recall = 0.0
     best_epoch = 0
     patience_counter = 0
     training_history = []
