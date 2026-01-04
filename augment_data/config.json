@@ -3,7 +3,7 @@
     "image_folder": "data/spdocvqa_images",
     "data_path": "data/spdocvqa_qas/train_v1.0_withQT.json",
     "caption_output_path": "data/augmented_data/augmented_caption_train_spdocvqa.json",
-    "explaination_output_path": "data/augmented_explaination_data/augmented_train_spdocvqa.json",
+    "explaination_output_path": "data/augmented_data/augmented_explaination_train_spdocvqa.json",
     "max_rpm": 40,
     "max_tpm": 250000,
     "avg_tokens_per_call": 3000,
