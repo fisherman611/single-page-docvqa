@@ -180,7 +180,7 @@ class MultimodalBiEncoder:
             self.build_text_input(
                 batch_examples[i],
                 drop_q=drop_q_mask[i],
-                drop_cap=drop_q_mask[i]
+                drop_cap=drop_cap_mask[i]
             )
             for i in range(len(batch_examples))
         ]
