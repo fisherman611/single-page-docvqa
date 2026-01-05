@@ -19,9 +19,6 @@ from tqdm import tqdm
 from multimodal_biencoder import MultimodalBiEncoder
 from faiss_utils import save_index
 
-IMAGE_ROOT = Path("data/spdocvqa_images")
-
-
 def load_examples(path: str, max_examples: Optional[int] = None) -> List[Dict]:
     """
     Load training examples from JSON file.
@@ -50,7 +47,7 @@ def load_examples(path: str, max_examples: Optional[int] = None) -> List[Dict]:
             ex["image_caption"] = f"Document image {i}"
         # Fix image path
         if "image" in ex:
-            ex["image"] = IMAGE_ROOT / Path(ex["image"]).name
+            ex["image"] = Path(ex["image"])
 
     if max_examples is not None:
         examples = examples[:max_examples]
