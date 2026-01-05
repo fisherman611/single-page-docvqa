@@ -345,6 +345,7 @@ class MultimodalBiEncoder:
             topm: Number of top neighbors to retrieve
             query_view: Query view type:
                 - "image+question": use image + question (drop caption)
+                - "image+caption": use image + caption (drop question)
                 - "text-only": use question + caption only (no image)
                 - "full": use image + question + caption
             batch_size: Batch size for encoding
@@ -367,6 +368,10 @@ class MultimodalBiEncoder:
                 use = [True] * len(batch)      # use image
                 dq = [False] * len(batch)      # don't drop question
                 dc = [True] * len(batch)       # drop caption
+            elif query_view == "image+caption":
+                use = [True] * len(batch)      # use image
+                dq = [True] * len(batch)      # drop question
+                dc = [False] * len(batch)       # don't drop caption
             elif query_view == "text-only":
                 use = [False] * len(batch)     # don't use image
                 dq = [False] * len(batch)      # don't drop question

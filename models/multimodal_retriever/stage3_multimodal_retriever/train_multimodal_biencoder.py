@@ -47,10 +47,7 @@ def load_examples(path: str, max_examples: Optional[int] = None) -> List[Dict]:
         if "id" not in ex:
             ex["id"] = i
         if "image_caption" not in ex:
-            if "image_description" in ex:
-                ex["image_caption"] = ex["image_description"]
-            else:
-                ex["image_caption"] = f"Document image {i}"
+            ex["image_caption"] = f"Document image {i}"
         # Fix image path
         if "image" in ex:
             ex["image"] = IMAGE_ROOT / Path(ex["image"]).name
@@ -209,8 +206,8 @@ def main():
     )
     parser.add_argument(
         "--query_view",
-        default="image+question",
-        choices=["image+question", "text-only", "full"],
+        default="full",
+        choices=["image+question", "image+caption", "text-only", "full"],
         help="Query view for hard negative mining",
     )
     parser.add_argument(
