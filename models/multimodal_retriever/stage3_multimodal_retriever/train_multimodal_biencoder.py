@@ -40,9 +40,9 @@ def load_examples(path: str, max_examples: Optional[int] = None) -> List[Dict]:
 
     # Handle different JSON structures
     if "data" in data:
-        examples = data["data"][:10]
+        examples = data["data"]
     else:
-        examples = data[:10]
+        examples = data
 
     # Ensure required keys and fix image paths
     for i, ex in enumerate(examples):
