@@ -8,13 +8,18 @@ if str(PROJECT_ROOT) not in sys.path:
 sys.path.append(PROJECT_ROOT / "utils")
 
 import json
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Literal
 import numpy as np
 from PIL import Image
 import faiss
 import random
 import torch
 import torch.nn as nn
+from torch.torch_version import TorchVersion
+from torch.serialization import add_safe_globals
+
+add_safe_globals([TorchVersion])
+
 from transformers import CLIPProcessor, CLIPModel
 from tqdm.auto import tqdm
 from sentence_transformers import SentenceTransformer, CrossEncoder, util
@@ -23,30 +28,39 @@ from dotenv import load_dotenv
 from models.multimodal_retriever.stage3_multimodal_retriever import faiss_utils
 
 
+ViewTuple = Tuple[bool, bool, bool]  # (use_image, drop_q, drop_cap)
+
 load_dotenv()
 from huggingface_hub import login
+
 login(token=os.getenv("HF_READ_TOKEN"))
 
-with open("models/multimodal_retriever/stage3_multimodal_retriever/config.json", "r", encoding="utf-8") as f:
+with open(
+    "models/multimodal_retriever/stage3_multimodal_retriever/config.json",
+    "r",
+    encoding="utf-8",
+) as f:
     config = json.load(f)
 
 TEXT_MODEL = config["text_model_embedding"]
 IMAGE_MODEL = config["image_model_embedding"]
 PROJ_DIM = config["proj_dim"]
 
+
 class MultimodalBiEncoder:
     """
     Multimodal Bi-encoder for (image, question, image caption)
     """
+
     def __init__(
         self,
-        text_model_name: str=TEXT_MODEL,
-        image_model_name: str=IMAGE_MODEL,
-        proj_dim: int=PROJ_DIM,
-        device: str=None
-     ) -> None:
+        text_model_name: str = TEXT_MODEL,
+        image_model_name: str = IMAGE_MODEL,
+        proj_dim: int = PROJ_DIM,
+        device: str = None,
+    ) -> None:
         super().__init__()
-        
+
         if device is None:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
         else:
@@ -54,68 +68,73 @@ class MultimodalBiEncoder:
 
         # Image encoder (CLIP)
         self.image_model = CLIPModel.from_pretrained(image_model_name).to(self.device)
-        self.image_processor = CLIPProcessor.from_pretrained(image_model_name, use_fast=True)
+        self.image_processor = CLIPProcessor.from_pretrained(
+            image_model_name, use_fast=True
+        )
         image_dim = self.image_model.config.projection_dim
-        
+
         # Text encoder
         self.text_encoder_type = self._infer_text_encoder_type(text_model_name)
         if self.text_encoder_type == "sentence_transformers":
             self.text_model = SentenceTransformer(text_model_name).to(self.device)
             text_dim = self.text_model.get_sentence_embedding_dimension()
             self.text_processor = None
-        
+
         elif self.text_encoder_type == "clip":
             self.text_model = CLIPModel.from_pretrained(text_model_name).to(self.device)
-            self.text_processor = CLIPProcessor.from_pretrained(text_model_name, use_fast=True)
+            self.text_processor = CLIPProcessor.from_pretrained(
+                text_model_name, use_fast=True
+            )
             text_dim = self.text_model.config.projection_dim
-        
+
         else:
             raise ValueError(
                 f"Unsupported text encoder for model '{text_model_name}'. "
                 f"Use a SentenceTransformer (e.g. 'sentence-transformers/...') "
                 f"or a CLIP checkpoint (e.g. 'openai/clip-vit-base-patch32')."
             )
-        
-        self.proj = nn.Linear(image_dim + text_dim, proj_dim).to(self.device)
-    
-    
+
+        self.proj = nn.Sequential(
+            nn.Linear(image_dim + text_dim, proj_dim),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(proj_dim, proj_dim),
+        ).to(self.device)
+
     def train(self):
         """Set model to training mode."""
         self.image_model.train()
         if self.text_encoder_type == "clip":
             self.text_model.train()
         self.proj.train()
-    
-    
+
     def eval(self):
         """Set model to evaluation mode."""
         self.image_model.eval()
         if self.text_encoder_type == "clip":
             self.text_model.eval()
         self.proj.eval()
-    
-    
+
     def _infer_text_encoder_type(self, text_model_name: str) -> str:
         name = (text_model_name or "").lower()
         if name.startswith("sentence-transformers/"):
             return "sentence_transformers"
         if "clip" in name:
             return "clip"
-        
+
         return "unknown"
-    
-    
-    def build_text_input(self, example: Dict, drop_q: bool=False, drop_cap: bool=False) -> str:
+
+    def build_text_input(
+        self, example: Dict, drop_q: bool = False, drop_cap: bool = False
+    ) -> str:
         question = "" if drop_q else example.get("question", "")
-        image_caption ="" if drop_cap else  example.get("image_caption", "")
+        image_caption = "" if drop_cap else example.get("image_caption", "")
         return f"Question: {question} [SEP] Image caption: {image_caption}"
-    
-    
+
     def build_image_input(self, example: Dict) -> Image.Image:
         return load_image(example.get("image", ""))
-    
-    
-    def encode_text(self, texts: List[str], no_grad: bool=True) -> torch.Tensor:
+
+    def encode_text(self, texts: List[str], no_grad: bool = True) -> torch.Tensor:
         ctx = torch.no_grad() if no_grad else torch.enable_grad()
         with ctx:
             if self.text_encoder_type == "sentence_transformers":
@@ -125,7 +144,7 @@ class MultimodalBiEncoder:
                     device=self.device,
                     show_progress_bar=False,
                 )
-            
+
             else:
                 inputs = self.text_processor(
                     text=texts,
@@ -134,25 +153,24 @@ class MultimodalBiEncoder:
                     return_tensors="pt",
                 ).to(self.device)
                 emb = self.text_model.get_text_features(**inputs)
-            
+
             emb = emb / emb.norm(dim=-1, keepdim=True)
             return emb
-        
-    
-    def encode_image(self, images: List[Image.Image], no_grad: bool=True) -> torch.Tensor:
+
+    def encode_image(
+        self, images: List[Image.Image], no_grad: bool = True
+    ) -> torch.Tensor:
         ctx = torch.no_grad() if no_grad else torch.enable_grad()
         with ctx:
-            inputs = self.image_processor(images=images, return_tensors="pt").to(self.device)
+            inputs = self.image_processor(images=images, return_tensors="pt").to(
+                self.device
+            )
             emb = self.image_model.get_image_features(**inputs)
             emb = emb / emb.norm(dim=-1, keepdim=True)
             return emb
-    
-    
+
     def encode_pair(
-        self,
-        images: List[Image.Image],
-        texts: List[str],
-        no_grad: bool=True
+        self, images: List[Image.Image], texts: List[str], no_grad: bool = True
     ) -> torch.Tensor:
         """
         Returns fused embedding: [B, proj_dim], normalized
@@ -166,37 +184,35 @@ class MultimodalBiEncoder:
             proj = proj / proj.norm(dim=-1, keepdim=True)
             return proj
 
-
     def encode_bundle(
         self,
         batch_examples: List[Dict],
         use_image_mask: List[bool],
         drop_q_mask: List[bool],
         drop_cap_mask: List[bool],
-        no_grad: bool=True
+        no_grad: bool = True,
     ) -> torch.Tensor:
         images = [self.build_image_input(example) for example in batch_examples]
         texts = [
             self.build_text_input(
-                batch_examples[i],
-                drop_q=drop_q_mask[i],
-                drop_cap=drop_cap_mask[i]
+                batch_examples[i], drop_q=drop_q_mask[i], drop_cap=drop_cap_mask[i]
             )
             for i in range(len(batch_examples))
         ]
-        
+
         ctx = torch.no_grad() if no_grad else torch.enable_grad()
         with ctx:
-            img_emb = self.encode_image(images, no_grad=no_grad)   # [B, image_dim]
-            txt_emb = self.encode_text(texts, no_grad=no_grad)     # [B, text_dim]
-            mask = torch.tensor(use_image_mask, device=self.device, dtype=torch.float32).unsqueeze(1)
+            img_emb = self.encode_image(images, no_grad=no_grad)  # [B, image_dim]
+            txt_emb = self.encode_text(texts, no_grad=no_grad)  # [B, text_dim]
+            mask = torch.tensor(
+                use_image_mask, device=self.device, dtype=torch.float32
+            ).unsqueeze(1)
             img_emb = img_emb * mask
             concat = torch.cat([img_emb, txt_emb], dim=-1)
             proj = self.proj(concat)
             proj = proj / proj.norm(dim=-1, keepdim=True)
             return proj
-        
-        
+
     @staticmethod
     def info_nce_loss(
         query_emb: torch.Tensor,
@@ -213,8 +229,7 @@ class MultimodalBiEncoder:
         loss_q = torch.nn.functional.cross_entropy(logits, labels)
         loss_d = torch.nn.functional.cross_entropy(logits.t(), labels)
         return (loss_q + loss_d) / 2.0
-    
-    
+
     @staticmethod
     def sample_view() -> Tuple[bool, bool, bool]:
         """
@@ -222,26 +237,60 @@ class MultimodalBiEncoder:
         """
         r = random.random()
         if r < 0.25:
-            return True, False, True     # image + question
+            return True, False, True  # image + question
         elif r < 0.50:
-            return True, True, False     # image + caption
+            return True, True, False  # image + caption
         elif r < 0.65:
-            return False, False, False   # text-only (q+cap)
+            return False, False, False  # text-only (q+cap)
         else:
-            return True, False, False    # full (image+q+cap)
-    
-    
+            return True, False, False  # full (image+q+cap)
+
+    @staticmethod
+    def sample_view_full_heavy(
+        p_full: float = 0.8,
+        p_img_q: float = 0.1,
+        p_img_cap: float = 0.1,
+        p_text_only: float = 0.0,
+    ) -> ViewTuple:
+        """
+        Full-heavy: mostly full, sometimes drop one modality.
+        Default: 80% full, 10% image+question, 10% image+caption, 0% text-only
+        """
+        r = random.random()
+        if r < p_full:
+            return True, False, False  # full
+        r -= p_full
+        if r < p_img_q:
+            return True, False, True  # image+question
+        r -= p_img_q
+        if r < p_img_cap:
+            return True, True, False  # image+caption
+        # remaining
+        return False, False, False  # text-only
+
+    @staticmethod
+    def view_full() -> ViewTuple:
+        return True, False, False
+
     def two_view_contrastive_training_step(
         self,
         batch_examples: List[Dict],
         optimizer: torch.optim.Optimizer,
-        temperature: float=0.07,
+        temperature: float = 0.07,
+        mode: Literal["two-view", "full-heavy", "full-only"] = "two-view",
+        # full-heavy knobs
+        full_heavy_p_full: float = 0.8,
+        full_heavy_p_img_q: float = 0.1,
+        full_heavy_p_img_cap: float = 0.1,
+        full_heavy_p_text_only: float = 0.0,
+        # strategy: whether anchor view A is always full in full-heavy
+        full_heavy_anchor_full: bool = True,
     ) -> float:
         """
-        Self-retrieval training (query/doc from SAME example pool):
-          - build view A and view B for each example
-          - positive: A(i) ~ B(i)
-          - negatives: A(i) ~ B(j != i) in-batch
+        Modes:
+        - "two-view": your original random multi-view sampling on both sides
+        - "full-heavy": mostly full; optionally enforce A=full and sample B
+        - "full-only": always full on both sides
         """
         self.train()
 
@@ -249,10 +298,37 @@ class MultimodalBiEncoder:
         use_b, dq_b, dc_b = [], [], []
 
         for _ in batch_examples:
-            ua, dqa, dca = self.sample_view()
-            ub, dqb, dcb = self.sample_view()
-            use_a.append(ua); dq_a.append(dqa); dc_a.append(dca)
-            use_b.append(ub); dq_b.append(dqb); dc_b.append(dcb)
+            if mode == "full-only":
+                ua, dqa, dca = self.view_full()
+                ub, dqb, dcb = self.view_full()
+
+            elif mode == "full-heavy":
+                if full_heavy_anchor_full:
+                    ua, dqa, dca = self.view_full()
+                else:
+                    ua, dqa, dca = self.sample_view_full_heavy(
+                        p_full=full_heavy_p_full,
+                        p_img_q=full_heavy_p_img_q,
+                        p_img_cap=full_heavy_p_img_cap,
+                        p_text_only=full_heavy_p_text_only,
+                    )
+                ub, dqb, dcb = self.sample_view_full_heavy(
+                    p_full=full_heavy_p_full,
+                    p_img_q=full_heavy_p_img_q,
+                    p_img_cap=full_heavy_p_img_cap,
+                    p_text_only=full_heavy_p_text_only,
+                )
+
+            else:  # "two-view"
+                ua, dqa, dca = self.sample_view()
+                ub, dqb, dcb = self.sample_view()
+
+            use_a.append(ua)
+            dq_a.append(dqa)
+            dc_a.append(dca)
+            use_b.append(ub)
+            dq_b.append(dqb)
+            dc_b.append(dcb)
 
         z_a = self.encode_bundle(batch_examples, use_a, dq_a, dc_a, no_grad=False)
         z_b = self.encode_bundle(batch_examples, use_b, dq_b, dc_b, no_grad=False)
@@ -262,23 +338,22 @@ class MultimodalBiEncoder:
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
-        
+
         return float(loss.item())
-    
-    
+
     def build_faiss_index(
-        self, 
-        examples: List[Dict], 
+        self,
+        examples: List[Dict],
         batch_size: int = 64,
         use_gpu: bool = False,
         index_type: str = "flat",
         nlist: int = 100,
         m: int = 8,
-        nbits: int = 8
+        nbits: int = 8,
     ) -> Tuple[faiss.Index, np.ndarray]:
         """
         Build a FAISS index from document embeddings.
-        
+
         Args:
             examples: List of examples with image, question, and image_caption fields
             batch_size: Batch size for encoding
@@ -291,7 +366,7 @@ class MultimodalBiEncoder:
             nlist: Number of clusters for IVF indices
             m: Number of subquantizers for PQ
             nbits: Number of bits per subquantizer for PQ
-        
+
         Returns:
             Tuple of (FAISS index, embedding matrix)
         """
@@ -300,17 +375,17 @@ class MultimodalBiEncoder:
 
         # Doc embedding uses FULL view (image + question + caption)
         for i in tqdm(range(0, len(examples), batch_size)):
-            batch = examples[i:i + batch_size]
-            use = [True] * len(batch)      # use image
-            dq = [False] * len(batch)      # don't drop question
-            dc = [False] * len(batch)      # don't drop caption
+            batch = examples[i : i + batch_size]
+            use = [True] * len(batch)  # use image
+            dq = [False] * len(batch)  # don't drop question
+            dc = [False] * len(batch)  # don't drop caption
 
             with torch.no_grad():
                 z = self.encode_bundle(batch, use, dq, dc, no_grad=True)
             vecs.append(z.cpu().numpy().astype("float32"))
 
         mat = np.concatenate(vecs, axis=0)
-        
+
         # Use the build_index function from faiss_utils
         index = faiss_utils.build_index(
             embeddings=mat,
@@ -318,12 +393,11 @@ class MultimodalBiEncoder:
             index_type=index_type,
             nlist=nlist,
             m=m,
-            nbits=nbits
+            nbits=nbits,
         )
-        
+
         return index, mat
-    
-    
+
     def mine_hard_negatives(
         self,
         index: faiss.Index,
@@ -334,11 +408,11 @@ class MultimodalBiEncoder:
     ) -> Dict[str, List[str]]:
         """
         Mine hard negatives using FAISS index.
-        
+
         No true relevance labels needed:
         - hard negatives = nearest neighbors excluding itself.
         You can add extra filters (e.g., different answer) later if you want.
-        
+
         Args:
             index: Pre-built FAISS index from build_faiss_index
             examples: List of examples (same as used to build index)
@@ -349,7 +423,7 @@ class MultimodalBiEncoder:
                 - "text-only": use question + caption only (no image)
                 - "full": use image + question + caption
             batch_size: Batch size for encoding
-        
+
         Returns:
             Dictionary mapping example ID to list of hard negative IDs
         """
@@ -361,28 +435,33 @@ class MultimodalBiEncoder:
         hard_negs = {ex_id: [] for ex_id in ids}
 
         for i in range(0, len(examples), batch_size):
-            batch = examples[i:i + batch_size]
+            batch = examples[i : i + batch_size]
 
             # Configure view based on query_view parameter
             if query_view == "image+question":
-                use = [True] * len(batch)      # use image
-                dq = [False] * len(batch)      # don't drop question
-                dc = [True] * len(batch)       # drop caption
+                use = [True] * len(batch)  # use image
+                dq = [False] * len(batch)  # don't drop question
+                dc = [True] * len(batch)  # drop caption
             elif query_view == "image+caption":
-                use = [True] * len(batch)      # use image
-                dq = [True] * len(batch)      # drop question
-                dc = [False] * len(batch)       # don't drop caption
+                use = [True] * len(batch)  # use image
+                dq = [True] * len(batch)  # drop question
+                dc = [False] * len(batch)  # don't drop caption
             elif query_view == "text-only":
-                use = [False] * len(batch)     # don't use image
-                dq = [False] * len(batch)      # don't drop question
-                dc = [False] * len(batch)      # don't drop caption
+                use = [False] * len(batch)  # don't use image
+                dq = [False] * len(batch)  # don't drop question
+                dc = [False] * len(batch)  # don't drop caption
             else:  # full
-                use = [True] * len(batch)      # use image
-                dq = [False] * len(batch)      # don't drop question
-                dc = [False] * len(batch)      # don't drop caption
+                use = [True] * len(batch)  # use image
+                dq = [False] * len(batch)  # don't drop question
+                dc = [False] * len(batch)  # don't drop caption
 
             with torch.no_grad():
-                q = self.encode_bundle(batch, use, dq, dc, no_grad=True).cpu().numpy().astype("float32")
+                q = (
+                    self.encode_bundle(batch, use, dq, dc, no_grad=True)
+                    .cpu()
+                    .numpy()
+                    .astype("float32")
+                )
 
             # Search for nearest neighbors
             scores, neigh_pos = index.search(q, topm)
@@ -397,7 +476,30 @@ class MultimodalBiEncoder:
                 hard_negs[ex_id] = [examples[p]["id"] for p in candidates]
 
         return hard_negs
-    
+
+    @classmethod
+    def from_checkpoint(cls, ckpt_path: str, device: str = None):
+        """
+        Recreate model from saved config + load projection weights.
+        """
+        payload = torch.load(ckpt_path, map_location="cpu")
+        cfg = payload["config"]
+
+        model = cls(
+            text_model_name=cfg["text_model"],
+            image_model_name=cfg["image_model"],
+            proj_dim=cfg["proj_dim"],
+            device=device,
+        )
+
+        model.proj.load_state_dict(payload["proj_state_dict"])
+        model.eval()
+
+        # attach cfg for convenience
+        model.ckpt_config = cfg
+        model.ckpt_meta = payload.get("best", {})
+        model.ckpt_env = payload.get("env", {})
+        return model
 
 
 # def run_one_test(text_model_name: str, image_model_name: str, proj_dim: int):

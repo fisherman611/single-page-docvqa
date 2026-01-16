@@ -1,9 +1,13 @@
 python models/multimodal_retriever/stage3_multimodal_retriever/train_multimodal_biencoder.py \
     --data data/augmented_data/augmented_train_spdocvqa.json \
+    --stage1_epochs 5 --stage1_mode two-view \
+    --stage2_epochs 15 --stage2_mode full-only \
+    --full_heavy_p_full 0.85 --full_heavy_p_img_q 0.10 --full_heavy_p_img_cap 0.05 \
     --text_model openai/clip-vit-base-patch32 \
     --image_model openai/clip-vit-base-patch32 \
-    --epochs 20 \
     --hard_mining_every 2 \
+    --steps_per_epoch 300 \
+    --batch_size 64 \
     --hard_topm 50 \
     --hard_neg_k 3 \
     --query_view full \

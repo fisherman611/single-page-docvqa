@@ -18,6 +18,11 @@ from tqdm import tqdm
 
 from multimodal_biencoder import MultimodalBiEncoder
 from faiss_utils import save_index
+import platform
+import transformers
+import sentence_transformers
+import torch
+
 
 def load_examples(path: str, max_examples: Optional[int] = None) -> List[Dict]:
     """
@@ -35,9 +40,9 @@ def load_examples(path: str, max_examples: Optional[int] = None) -> List[Dict]:
 
     # Handle different JSON structures
     if "data" in data:
-        examples = data["data"]
+        examples = data["data"][:10]
     else:
-        examples = data
+        examples = data[:10]
 
     # Ensure required keys and fix image paths
     for i, ex in enumerate(examples):
@@ -129,16 +134,39 @@ def save_best_model(
     epoch: int,
     loss: float,
 ):
-    """Save the current best model (projection layer + config + metadata)."""
+    """Save reproducible checkpoint (proj + full config + metadata)."""
     payload = {
+        # weights
         "proj_state_dict": model.proj.state_dict(),
-        "config": config,
+        # REQUIRED to recreate model
+        "config": {
+            "text_model": config["text_model"],
+            "image_model": config["image_model"],
+            "proj_dim": config["proj_dim"],
+            # Optional but useful: how you built training text
+            # so inference can match the same format.
+            "text_format": "Question: {question} [SEP] Image caption: {caption}",
+            # Optional: default views you use
+            "default_doc_view": "full",
+            "default_query_view": "full",
+            # Optional: indicates you L2-normalize embeddings
+            "normalize": True,
+        },
+        # metadata (not required, but great for debugging)
         "best": {
             "epoch": epoch,
-            "loss": loss,
+            "loss": float(loss),
             "saved_at": datetime.now().isoformat(timespec="seconds"),
         },
+        "env": {
+            "python": platform.python_version(),
+            "torch": torch.__version__,
+            "transformers": transformers.__version__,
+            "sentence_transformers": sentence_transformers.__version__,
+            "cuda_available": torch.cuda.is_available(),
+        },
     }
+
     torch.save(payload, save_path)
 
 
@@ -167,9 +195,39 @@ def main():
     )
 
     # Training arguments
+    # ---- Stage training arguments ----
     parser.add_argument(
-        "--epochs", type=int, default=5, help="Number of training epochs"
+        "--stage1_epochs", type=int, default=3, help="Epochs for stage 1"
     )
+    parser.add_argument(
+        "--stage1_mode",
+        default="full-heavy",
+        choices=["two-view", "full-heavy", "full-only"],
+        help="Training mode for stage 1",
+    )
+
+    parser.add_argument(
+        "--stage2_epochs", type=int, default=2, help="Epochs for stage 2"
+    )
+    parser.add_argument(
+        "--stage2_mode",
+        default="full-only",
+        choices=["two-view", "full-heavy", "full-only"],
+        help="Training mode for stage 2",
+    )
+
+    # full-heavy knobs (optional)
+    parser.add_argument("--full_heavy_p_full", type=float, default=0.8)
+    parser.add_argument("--full_heavy_p_img_q", type=float, default=0.1)
+    parser.add_argument("--full_heavy_p_img_cap", type=float, default=0.1)
+    parser.add_argument("--full_heavy_p_text_only", type=float, default=0.0)
+    parser.add_argument(
+        "--full_heavy_anchor_full",
+        type=int,
+        default=1,
+        help="1: A is always full in full-heavy",
+    )
+
     parser.add_argument(
         "--steps_per_epoch", type=int, default=300, help="Training steps per epoch"
     )
@@ -237,6 +295,7 @@ def main():
     )
 
     args = parser.parse_args()
+    total_epochs = args.stage1_epochs + args.stage2_epochs
 
     # Set random seeds
     random.seed(args.seed)
@@ -255,7 +314,9 @@ def main():
     print(f"Text Model: {args.text_model}")
     print(f"Image Model: {args.image_model}")
     print(f"Projection Dim: {args.proj_dim}")
-    print(f"Epochs: {args.epochs}")
+    print(f"Stage1: {args.stage1_epochs} epochs | mode={args.stage1_mode}")
+    print(f"Stage2: {args.stage2_epochs} epochs | mode={args.stage2_mode}")
+    print(f"Total Epochs: {total_epochs}")
     print(f"Steps/Epoch: {args.steps_per_epoch}")
     print(f"Batch Size: {args.batch_size}")
     print(f"Learning Rate: {args.lr}")
@@ -287,6 +348,14 @@ def main():
         "text_model": args.text_model,
         "image_model": args.image_model,
         "proj_dim": args.proj_dim,
+        "temperature": args.temperature,
+        "seed": args.seed,
+        "batch_size": args.batch_size,
+        "hard_mining_every": args.hard_mining_every,
+        "hard_topm": args.hard_topm,
+        "hard_neg_k": args.hard_neg_k,
+        "query_view": args.query_view,
+        "index_type": args.index_type,
     }
 
     # Resume from checkpoint if specified
@@ -308,9 +377,9 @@ def main():
     hard_negs = None
     global_step = 0
 
-    for epoch in range(start_epoch, args.epochs + 1):
+    for epoch in range(start_epoch, total_epochs + 1):
         print(f"\n{'=' * 70}")
-        print(f"Epoch {epoch}/{args.epochs}")
+        print(f"Epoch {epoch}/{total_epochs}")
         print(f"{'=' * 70}")
 
         # Hard negative mining
@@ -361,6 +430,16 @@ def main():
         progress_bar = tqdm(range(1, args.steps_per_epoch + 1), desc=f"Epoch {epoch}")
 
         for step in progress_bar:
+            # Decide stage mode
+            if epoch <= args.stage1_epochs:
+                current_mode = args.stage1_mode
+                stage_name = "stage1"
+            else:
+                current_mode = args.stage2_mode
+                stage_name = "stage2"
+
+            print(f"Mode this epoch: {current_mode} ({stage_name})")
+
             global_step += 1
 
             # Create batch with hard negatives
@@ -376,6 +455,12 @@ def main():
                 batch_examples=batch,
                 optimizer=optimizer,
                 temperature=args.temperature,
+                mode=current_mode,
+                full_heavy_p_full=args.full_heavy_p_full,
+                full_heavy_p_img_q=args.full_heavy_p_img_q,
+                full_heavy_p_img_cap=args.full_heavy_p_img_cap,
+                full_heavy_p_text_only=args.full_heavy_p_text_only,
+                full_heavy_anchor_full=bool(args.full_heavy_anchor_full),
             )
 
             running_loss += loss
