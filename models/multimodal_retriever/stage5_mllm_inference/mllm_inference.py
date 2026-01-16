@@ -146,7 +146,7 @@ if __name__ == "__main__":
                 "1/8/93"
             ],
             "answer_explanation": "Step 1: The date is mentioned in the 'DATE:' field at the top-left of the document image, which reads '1/8/93'. This is the date associated with the document.\nStep 2: The same date '1/8/93' is also found in the 'Date' column of the routing list, next to 'Peggy Carter', reinforcing that '1/8/93' is the date mentioned in the letter.",
-            "image_caption": "A confidential document with a routing list, dated 11/8/93, with subject 'Rj gdfs'. The list includes names, initials, and dates. It is marked 'RJRT PR APPROVAL' at the top and has a return address to Peggy Carter, PR, 16 Reynolds Building."
+            "image_caption": "A confidential document with a routing list, dated 1/8/93, with subject 'Rj gdfs'. The list includes names, initials, and dates. It is marked 'RJRT PR APPROVAL' at the top and has a return address to Peggy Carter, PR, 16 Reynolds Building."
         }
     
     retrieved_examples = [
