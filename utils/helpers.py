@@ -166,15 +166,12 @@ def build_example_template(
     idx: int
 ) -> str:
     question = ex["question"]
-    img_caption = ex.get("image_caption", "")
     answers = ex.get("answers", [])
     answer_explanation = ex.get("answer_explanation", "")
     
     block = []
     block.append(f"### Example {idx}\n")
     block.append(f"<image_{idx}>\n")
-    if img_caption:
-        block.append(f"[IMAGE_DESCRIPTION]: {img_caption}\n")
     
     block.append(f"[QUESTION]: {question}\n")
     if answer_explanation:
@@ -192,14 +189,11 @@ def build_query_template(
     idx: int
 ) -> str:
     question = query_ex["question"]
-    img_caption = query_ex.get("image_caption", "")
     
     block = []
     block.append("### Query Example")
     block.append(f"<image_{idx}>\n")
-    if img_caption:
-        block.append(f"[IMAGE_CAPTION]\n{img_caption}\n")
-
+    
     block.append("[QUESTION]")
     block.append(question + "\n")
 
