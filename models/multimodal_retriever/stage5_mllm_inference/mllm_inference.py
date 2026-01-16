@@ -36,7 +36,6 @@ MODEL_NAME = config["model_name"]
 with open("models/multimodal_retriever/stage5_mllm_inference/system_prompt.txt", "r", encoding="utf-8") as f:
     SYSTEM_PROMPT = f.read()
 
-MAX_INPUT_TOKENS = config["max_input_tokens"]
 MAX_NEW_TOKENS = config["max_new_tokens"]
 TEMPERATURE = config["temperature"]
 
@@ -46,13 +45,11 @@ class MLLMInference:
         model_name: str=MODEL_NAME,
         system_prompt: str=SYSTEM_PROMPT,
         device: str = None,
-        max_input_tokens: int = MAX_INPUT_TOKENS,
         max_new_tokens: int = MAX_NEW_TOKENS,   
         temperature: float = TEMPERATURE,
     ) -> None:
         self.model_name = model_name
         self.system_prompt = system_prompt
-        self.max_input_tokens = max_input_tokens
         self.max_new_tokens = max_new_tokens
         self.temperature = temperature
 
@@ -103,7 +100,6 @@ class MLLMInference:
             return_tensors="pt",
         ).to(self.device)
         
-        print("max_input_tokens:", self.max_input_tokens)
         print("text_prompt chars:", len(text_prompt))
         print("input_ids shape:", inputs["input_ids"].shape)
 
