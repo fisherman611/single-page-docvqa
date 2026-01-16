@@ -49,9 +49,13 @@ class CoTPromptBuilder:
         query_text = build_query_template(self.query_ex, idx=query_image_slot)
 
         # ----- Build final prompt text -----
-        prompt_text = "\n".join(prompt_blocks) + "\nNow answer the query example:\n" + query_text
+        self.full_prompt = (
+            "\n".join(prompt_blocks)
+            + "\nNow answer the query example:\n"
+            + query_text
+        )
         
-        return prompt_text, prompt_images
+        return self.full_prompt, prompt_images
         
     def length(self):
         return len(self.full_prompt)
