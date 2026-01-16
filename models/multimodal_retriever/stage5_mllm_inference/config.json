@@ -1,0 +1,6 @@
+{
+    "model_name": "Qwen/Qwen2-VL-2B",
+    "max_input_tokens": 4096,
+    "max_new_tokens": 128,
+    "temperature": 0.7
+}
