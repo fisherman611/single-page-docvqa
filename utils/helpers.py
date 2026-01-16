@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image
 import requests
 from io import BytesIO
+from typing import Dict, List, Any,Tuple, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -156,3 +157,55 @@ def load_image_from_url(url: str) -> Image.Image:
     r = requests.get(url, timeout=30)
     r.raise_for_status()
     return Image.open(BytesIO(r.content)).convert("RGB")
+
+
+def build_example_template(
+    ex: Dict[str, Any],
+    idx: int
+) -> str:
+    question = ex["question"]
+    img_caption = ex.get("image_caption", "")
+    answers = ex.get("answers", [])
+    answer_explanation = ex.get("answer_explanation", "")
+    
+    block = []
+    block.append(f"### Example {idx}\n")
+    block.append(f"<image_{idx}>\n")
+    if img_caption:
+        block.append(f"[IMAGE_DESCRIPTION]: {img_caption}\n")
+    
+    block.append(f"[QUESTION]: {question}\n")
+    if answer_explanation:
+        block.append(f"[CHAIN OF THOUGHT]: {answer_explanation}\n")
+    
+    block.append(f"[FINAL_ANSWER]:")
+    for answer in answers:
+        block.append(answer)
+    block.append("")
+    
+    return "\n".join(block)
+    
+def build_query_template(
+    query_ex: Dict[str, Any],
+    idx: int
+) -> str:
+    question = query_ex["question"]
+    img_caption = query_ex.get("image_caption", "")
+    
+    block = []
+    block.append("### Query Example")
+    block.append(f"<image_{idx}>\n")
+    if img_caption:
+        block.append(f"[IMAGE_CAPTION]\n{img_caption}\n")
+
+    block.append("[QUESTION]")
+    block.append(question + "\n")
+
+    # Leave CoT blank for the model to fill
+    block.append("[CHAIN_OF_THOUGHT]")
+    block.append("")  # model will generate here
+
+    block.append("[FINAL_ANSWER]")
+    block.append("")  # model will generate here
+
+    return "\n".join(block)
