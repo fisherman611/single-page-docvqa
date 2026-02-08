@@ -302,7 +302,7 @@ def main():
     # Checkpoint arguments
     parser.add_argument(
         "--save_dir",
-        default="crossencoder_checkpoints",
+        default="multimodal_crossencoder_checkpoints",
         help="Directory to save checkpoints",
     )
     parser.add_argument(
@@ -422,7 +422,7 @@ def main():
     # Best tracking
     best_loss = float("inf")
     best_epoch = 0
-    best_path = os.path.join(args.save_dir, "best_crossencoder.pt")
+    best_path = os.path.join(args.save_dir, "best_model.pt")
     best_meta_path = os.path.join(args.save_dir, "best_meta.json")
 
     # Training loop
