@@ -346,38 +346,3 @@ class MultimodalCrossEncoder(nn.Module):
 
         torch.save(payload, save_path)
         print(f"Checkpoint saved to: {save_path}")
-
-
-# ---------- Test / Demo ----------
-if __name__ == "__main__":
-    print("Testing MultimodalCrossEncoder...")
-
-    # Initialize model
-    model = MultimodalCrossEncoder(
-        model_name=RERANK_MODEL,
-        device="cuda" if torch.cuda.is_available() else "cpu",
-        fp16=True,
-    )
-
-    # Create dummy examples for testing
-    query = {
-        "question": "What is the total amount?",
-        "image_caption": "An invoice document with line items and totals.",
-        "image": "data/images/test_image.png",  # Replace with actual path
-    }
-
-    candidates = [
-        {
-            "question": "What is the invoice total?",
-            "image_caption": "A financial document showing transaction amounts.",
-            "image": "data/images/test_image.png",  # Replace with actual path
-        },
-        {
-            "question": "Who is the sender?",
-            "image_caption": "A letter with sender information.",
-            "image": "data/images/test_image.png",  # Replace with actual path
-        },
-    ]
-
-    print("\nNote: Replace image paths with actual images to test fully.")
-    print("Model loaded successfully!")
