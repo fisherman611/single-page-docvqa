@@ -1,5 +1,7 @@
 import os
 import sys
+import json
+import random
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[4]
@@ -47,15 +49,35 @@ for i, label in enumerate(label_list):
 print()
 
 # Load datasets
-print("Loading datasets...")
+print("Loading and splitting datasets...")
+with open("data/spdocvqa_qas/train_v1.0_withQT.json", "r") as f:
+    full_data = json.load(f)
+
+# Split 90/10
+all_items = full_data["data"]
+random.seed(42)  # For reproducibility
+random.shuffle(all_items)
+
+val_split = 0.1
+split_idx = int(len(all_items) * (1 - val_split))
+train_items = all_items[:split_idx]
+val_items = all_items[split_idx:]
+
+train_dict = {"data": train_items}
+val_dict = {"data": val_items}
+
+print(f"Total samples: {len(all_items)}")
+print(f"Training samples: {len(train_items)}")
+print(f"Validation samples: {len(val_items)}")
+
 train_ds = CLIPDocVQAMultimodalDataset(
-    "data/spdocvqa_qas/train_v1.0_withQT.json", 
+    train_dict, 
     "data/spdocvqa_images", 
     clip_proc, 
     label2id
 )
 val_ds = CLIPDocVQAMultimodalDataset(
-    "data/spdocvqa_qas/val_v1.0_withQT.json", 
+    val_dict, 
     "data/spdocvqa_images", 
     clip_proc, 
     label2id

@@ -23,9 +23,12 @@ NUM_CLASSES = len(config['classes'])
 MAX_LEN = config['max_len']
 
 class CLIPDocVQAMultimodalDataset(Dataset):
-    def __init__(self, json_path, img_root, processor, label2id, max_len=MAX_LEN) -> None:
-        with open(json_path, 'r') as f:
-            self.data = json.load(f)
+    def __init__(self, data_source, img_root, processor, label2id, max_len=MAX_LEN) -> None:
+        if isinstance(data_source, str) or isinstance(data_source, Path):
+            with open(data_source, 'r') as f:
+                self.data = json.load(f)
+        else:
+            self.data = data_source
         self.questions = [self.data['data'][i]['question'].strip() for i in range(len(self.data['data']))]
         # self.questions = [self.data['data'][i]['question'].strip() for i in range(1)]
         self.image_paths = [Path(self.data['data'][i]['image']).name for i in range(len(self.data['data']))]
