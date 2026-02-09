@@ -15,7 +15,7 @@ import json
 from typing import Union, List, Dict, Tuple
 import argparse
 
-from model import CLIPMultimodalClassifier
+from models.multimodal_retriever.stage1_multimodal_classifier.clip.model import CLIPMultimodalClassifier
 
 with open("models/multimodal_retriever/stage1_multimodal_classifier/clip/config.json", "r") as f:
     config = json.load(f)
